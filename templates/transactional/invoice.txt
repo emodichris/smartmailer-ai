@@ -1,0 +1,4 @@
+Hello {first_name},
+
+Your invoice #{invoice_number} is ready.
+View or download it: {invoice_url}

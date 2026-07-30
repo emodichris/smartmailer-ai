@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SmartMailer AI workspace dashboard">
+  <title>SmartMailer AI</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="SmartMailer AI home">
+        <span class="brand-mark">S</span>
+        <span><strong>SmartMailer</strong><small>AI sending studio</small></span>
+      </a>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span>⌂</span>Overview</button>
+        <button class="nav-item" data-view="compose"><span>✦</span>AI Composer</button>
+        <button class="nav-item" data-view="contacts"><span>♙</span>Contacts</button>
+        <button class="nav-item" data-view="campaigns"><span>➤</span>Campaigns</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="system-state"><i></i><span>System online</span></div>
+        <a href="/docs" target="_blank" rel="noreferrer">Developer API ↗</a>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="pageEyebrow">Workspace</p>
+          <h1 id="pageTitle">Good to see you.</h1>
+        </div>
+        <div class="top-actions">
+          <span class="workspace-pill" id="workspacePill">No workspace connected</span>
+          <button class="button primary" data-go="compose">Create email <span>→</span></button>
+        </div>
+      </header>
+
+      <section id="setupBanner" class="setup-banner">
+        <div>
+          <span class="step-number">01</span>
+          <div>
+            <strong>Connect your workspace</strong>
+            <p>Create a new workspace or paste an API key you already saved.</p>
+          </div>
+        </div>
+        <button class="button dark" data-go="settings">Set up workspace</button>
+      </section>
+
+      <section class="view active" id="view-overview">
+        <div class="metric-grid">
+          <article class="metric-card">
+            <span class="metric-icon coral">↗</span>
+            <p>Campaigns</p>
+            <strong id="campaignMetric">—</strong>
+            <small>Saved in this workspace</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-icon mint">♙</span>
+            <p>Contacts</p>
+            <strong id="contactMetric">—</strong>
+            <small>Ready for authorized sends</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-icon lavender">⌁</span>
+            <p>Connections</p>
+            <strong id="connectionMetric">—</strong>
+            <small>Email providers configured</small>
+          </article>
+          <article class="metric-card">
+            <span class="metric-icon yellow">✦</span>
+            <p>AI status</p>
+            <strong>Ready</strong>
+            <small>Draft generation available</small>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel span-two">
+            <div class="panel-head">
+              <div><p class="eyebrow">Recent work</p><h2>Campaign drafts</h2></div>
+              <button class="text-button" data-go="campaigns">View all →</button>
+            </div>
+            <div id="recentCampaigns" class="empty-state compact">
+              <span>✦</span><strong>Your drafts will appear here</strong>
+              <p>Start with AI Composer to create your first email.</p>
+            </div>
+          </article>
+          <article class="panel quick-panel">
+            <p class="eyebrow">Quick start</p>
+            <h2>From idea to inbox</h2>
+            <ol class="quick-list">
+              <li><span>1</span><div><strong>Connect</strong><small>Add your sending provider</small></div></li>
+              <li><span>2</span><div><strong>Compose</strong><small>Generate and refine your copy</small></div></li>
+              <li><span>3</span><div><strong>Review</strong><small>Preview before sending</small></div></li>
+            </ol>
+            <button class="button primary full" data-go="compose">Start composing</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-compose">
+        <div class="section-intro">
+          <div><p class="eyebrow">AI Composer</p><h2>Turn a brief into a polished email.</h2></div>
+          <p>SmartMailer generates a reviewable draft. Nothing is sent from this screen.</p>
+        </div>
+        <div class="compose-grid">
+          <form id="composerForm" class="panel form-panel">
+            <div class="field-row">
+              <label>Campaign name<input name="name" required placeholder="August customer update"></label>
+              <label>Email type<select name="campaign_type"><option value="marketing">Marketing</option><option value="transactional">Transactional</option></select></label>
+            </div>
+            <label>Sending connection<select name="connection_name" id="composerConnection" required><option value="">Set up a provider first</option></select></label>
+            <label>What is this email for?<textarea name="purpose" required minlength="3" placeholder="Announce our new service and invite customers to book a demo"></textarea></label>
+            <label>Who is it for?<input name="audience" required placeholder="Existing small-business customers"></label>
+            <div class="field-row">
+              <label>Brand voice<input name="brand_voice" value="clear, warm, and professional"></label>
+              <label>Call to action<input name="call_to_action" required placeholder="Book a demo"></label>
+            </div>
+            <label>Personalization variables<input name="variables" placeholder="first_name, company"></label>
+            <fieldset>
+              <legend>Recipients</legend>
+              <div id="composerContacts" class="contact-picker"><p>Add contacts in the Contacts section first.</p></div>
+            </fieldset>
+            <button class="button primary" type="submit">✦ Generate draft</button>
+          </form>
+          <article class="panel preview-panel">
+            <div class="preview-top"><span>Live result</span><span class="draft-badge">Draft only</span></div>
+            <div id="aiResult" class="empty-state">
+              <div class="spark">✦</div>
+              <strong>Your AI draft will appear here</strong>
+              <p>Complete the brief and choose at least one recipient.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-contacts">
+        <div class="section-intro">
+          <div><p class="eyebrow">Audience</p><h2>Contacts</h2></div>
+          <p>Use only recipients who consented or are authorized by an existing transaction.</p>
+        </div>
+        <div class="dashboard-grid">
+          <form id="contactForm" class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Add contact</p><h2>One at a time</h2></div></div>
+            <label>Email address<input name="email" type="email" required placeholder="ada@example.com"></label>
+            <div class="field-row">
+              <label>First name<input name="first_name" placeholder="Ada"></label>
+              <label>Company<input name="company" placeholder="Example Co."></label>
+            </div>
+            <button class="button primary" type="submit">Add contact</button>
+            <div class="divider"><span>or</span></div>
+            <label class="upload-box">Import a CSV
+              <small>Must include an “email” column · max 5 MB</small>
+              <input id="csvInput" type="file" accept=".csv,text/csv">
+            </label>
+          </form>
+          <article class="panel span-two">
+            <div class="panel-head">
+              <div><p class="eyebrow">Saved audience</p><h2 id="contactHeading">0 contacts</h2></div>
+              <button class="text-button" id="refreshContacts" type="button">Refresh ↻</button>
+            </div>
+            <div id="contactList" class="list-container empty-state compact"><p>Connect a workspace to load contacts.</p></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-campaigns">
+        <div class="section-intro">
+          <div><p class="eyebrow">Outbox</p><h2>Campaigns</h2></div>
+          <p>Preview every draft before you explicitly confirm a send.</p>
+        </div>
+        <article class="panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">Workspace history</p><h2>All campaigns</h2></div>
+            <button class="button secondary" data-go="compose">New campaign</button>
+          </div>
+          <div id="campaignList" class="list-container empty-state"><p>No campaigns yet.</p></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="section-intro">
+          <div><p class="eyebrow">Configuration</p><h2>Workspace & sending</h2></div>
+          <p>Your provider credentials are encrypted before they are stored locally.</p>
+        </div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Step 1</p><h2>Workspace access</h2></div><span id="keyStatus" class="status-chip">Not connected</span></div>
+            <form id="existingKeyForm">
+              <label>Existing API key<input name="api_key" type="password" autocomplete="off" placeholder="Paste your saved workspace key"></label>
+              <button class="button secondary" type="submit">Connect existing workspace</button>
+            </form>
+            <div class="divider"><span>or create new</span></div>
+            <form id="tenantForm">
+              <label>Business or workspace name<input name="name" required placeholder="Valencia Group"></label>
+              <label>Key label<input name="api_key_label" value="production" required><small>A label only—never enter an email password here.</small></label>
+              <button class="button primary" type="submit">Create workspace</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Step 2</p><h2>Email provider</h2></div><span id="providerStatus" class="status-chip">Not configured</span></div>
+            <form id="providerForm">
+              <div class="field-row">
+                <label>Connection name<input name="name" value="primary-email" required></label>
+                <label>Provider<select name="provider" id="providerSelect"><option value="sendgrid">SendGrid</option><option value="smtp">SMTP</option><option value="office365">Microsoft 365</option><option value="graph">Microsoft Graph</option></select></label>
+              </div>
+              <div id="providerFields"></div>
+              <button class="button primary" type="submit">Save encrypted connection</button>
+            </form>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <dialog id="keyDialog">
+    <button class="dialog-close" aria-label="Close">×</button>
+    <span class="dialog-icon">✓</span>
+    <h2>Workspace created</h2>
+    <p>This API key is displayed once. Copy it and keep it somewhere secure.</p>
+    <div class="copy-field"><code id="newApiKey"></code><button id="copyKey" type="button">Copy</button></div>
+    <button class="button primary full dialog-done">I saved my key</button>
+  </dialog>
+
+  <dialog id="previewDialog" class="preview-dialog">
+    <button class="dialog-close" aria-label="Close">×</button>
+    <div id="campaignPreview"></div>
+  </dialog>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
