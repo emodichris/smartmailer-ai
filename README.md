@@ -219,3 +219,32 @@ The included SQLite store is appropriate for local development only. A public
 multi-tenant deployment needs PostgreSQL, a managed encryption key, authentication
 for workspace administration, background job processing, rate limits, webhook
 verification, and a tracking domain before accepting customer traffic.
+
+### Private Hostinger VPS deployment
+
+`docker-compose.prod.yml` provides a small, single-server deployment for an
+owner-operated or private beta installation. It runs the FastAPI dashboard, the
+transactional worker, Redis, and Caddy with persistent Docker volumes. Caddy
+adds HTTPS and a password gate in front of the entire dashboard.
+
+On the VPS, clone the private repository, copy `.env.example` to `.env`, and
+replace every placeholder with a production value. Set `APP_DOMAIN` to the
+dedicated subdomain, such as `sender.example.com`. Generate the Caddy password
+hash without putting the plaintext password in shell history:
+
+```bash
+docker run --rm -i caddy:2-alpine caddy hash-password
+```
+
+Paste the generated hash into `DASHBOARD_PASSWORD_HASH`. Then deploy:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+```
+
+Allow inbound TCP ports 80 and 443, restrict SSH port 22 to trusted addresses
+where practical, and never expose Redis port 6379. Back up the
+`smartmailer-data` and `redis-data` volumes outside the VPS. This single-server
+layout is not a replacement for PostgreSQL and managed Redis when serving
+unrelated customer organizations or scaling across multiple servers.

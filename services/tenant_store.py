@@ -15,7 +15,12 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 
-DATABASE_PATH = Path(__file__).resolve().parent.parent / "database" / "smartmailer.sqlite3"
+DATABASE_PATH = Path(
+    os.getenv(
+        "DATABASE_PATH",
+        str(Path(__file__).resolve().parent.parent / "database" / "smartmailer.sqlite3"),
+    )
+)
 
 
 class TenantStoreError(ValueError):

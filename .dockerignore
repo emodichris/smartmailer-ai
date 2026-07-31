@@ -1,0 +1,10 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.env
+database
+cleaned_emails.csv
+temp_*
+SMARTSENDER_USER_GUIDE.md

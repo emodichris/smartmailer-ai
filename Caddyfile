@@ -1,0 +1,13 @@
+{$APP_DOMAIN} {
+    encode zstd gzip
+
+    handle /health {
+        reverse_proxy app:8000
+    }
+
+    basic_auth {
+        {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+    }
+
+    reverse_proxy app:8000
+}

@@ -1,0 +1,74 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/database/smartmailer.sqlite3
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - smartmailer-data:/app/database
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  worker:
+    build: .
+    command: python transactional_worker.py
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/database/smartmailer.sqlite3
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - smartmailer-data:/app/database
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  smartmailer-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
