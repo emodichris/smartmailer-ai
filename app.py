@@ -205,7 +205,9 @@ def dashboard_login(request: DashboardLoginRequest, http_request: Request):
     response.set_cookie(
         "smartmailer_session",
         create_session(dashboard_user, session_secret),
-        max_age=int(os.getenv("DASHBOARD_SESSION_TTL_SECONDS", "28800")),
+        # Authentication has no application-enforced timeout. Browsers may still
+        # enforce their own maximum cookie lifetime.
+        max_age=315_360_000,
         httponly=True,
         secure=IS_PRODUCTION,
         samesite="strict",
