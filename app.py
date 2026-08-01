@@ -64,7 +64,10 @@ async def dashboard_session_auth(request: Request, call_next):
         or request.url.path.startswith("/static/")
     )
     if public_path:
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     # API integrations retain workspace-key authentication without a browser cookie.
     if request.headers.get("X-API-Key"):
@@ -74,7 +77,10 @@ async def dashboard_session_auth(request: Request, call_next):
     session_secret = os.getenv("DASHBOARD_SESSION_SECRET", "")
     session_token = request.cookies.get("smartmailer_session", "")
     if session_secret and verify_session(session_token, dashboard_user, session_secret):
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     if request.url.path.startswith("/v1/") or request.url.path in {
         "/verify", "/upload-csv", "/send-email", "/send-campaign"
@@ -220,6 +226,8 @@ def dashboard_login(request: DashboardLoginRequest, http_request: Request):
 def dashboard_logout():
     response = JSONResponse({"status": "signed_out"})
     response.delete_cookie("smartmailer_session", path="/", secure=IS_PRODUCTION, samesite="strict")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Clear-Site-Data"] = '"cache"'
     return response
 
 

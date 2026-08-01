@@ -8,6 +8,12 @@ const state = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+// A signed-out dashboard restored from the browser's back-forward cache must
+// contact the server again, where the missing session redirects to /login.
+window.addEventListener("pageshow", event => {
+  if (event.persisted) location.reload();
+});
+
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, char => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
@@ -347,7 +353,7 @@ $("#signOutButton").addEventListener("click", async () => {
   state.workspace = null;
   state.contacts = [];
   state.campaigns = [];
-  try { await fetch("/auth/logout", { method: "POST" }); } finally { location.href = "/login"; }
+  try { await fetch("/auth/logout", { method: "POST" }); } finally { location.replace("/login"); }
 });
 
 $("#composerForm").addEventListener("submit", async event => {
