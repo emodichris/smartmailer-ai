@@ -1,6 +1,7 @@
 services:
   app:
     build: .
+    init: true
     restart: unless-stopped
     env_file: .env
     environment:
@@ -19,6 +20,7 @@ services:
   worker:
     build: .
     command: python transactional_worker.py
+    init: true
     restart: unless-stopped
     env_file: .env
     environment:
