@@ -36,9 +36,14 @@ import time
 TRANSACTIONAL_QUEUE_BATCH_SIZE = int(os.getenv("TRANSACTIONAL_BATCH_SIZE", "50"))
 TRANSACTIONAL_QUEUE_INTERVAL_SECONDS = int(os.getenv("TRANSACTIONAL_BATCH_INTERVAL_SECONDS", "300"))
 TRANSACTIONAL_QUEUE_MAX_RECIPIENTS = int(os.getenv("TRANSACTIONAL_QUEUE_MAX_RECIPIENTS", "10000"))
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
 
 
-app = FastAPI()
+app = FastAPI(
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 tenant_store = TenantStore()
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

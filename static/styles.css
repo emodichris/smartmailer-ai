@@ -47,6 +47,15 @@ button { cursor: pointer; }
 .nav-item.active { box-shadow: inset 3px 0 var(--yellow); }
 .sidebar-foot { margin-top: auto; display: grid; gap: 14px; padding: 0 8px; font-size: 12px; }
 .sidebar-foot a { color: #a9bbb4; text-decoration: none; }
+.sidebar-action {
+  padding: 0;
+  border: 0;
+  color: #a9bbb4;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+}
+.sidebar-action:hover { color: white; }
 .system-state { display: flex; align-items: center; gap: 8px; color: #cbd8d2; }
 .system-state i { width: 8px; height: 8px; background: #8dd5ae; border-radius: 50%; box-shadow: 0 0 0 5px rgba(141,213,174,.1); }
 
@@ -257,6 +266,7 @@ body {
   box-shadow: inset 3px 0 #52c9f5, 0 8px 24px rgba(0, 0, 0, .1);
 }
 .sidebar-foot a { color: #8996bb; }
+.sidebar-action { color: #8996bb; }
 .system-state { color: #bcc7e7; }
 .system-state i {
   background: #48d7c7;

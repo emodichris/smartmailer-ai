@@ -341,6 +341,17 @@ $("#csvInput").addEventListener("change", async event => {
 });
 $("#refreshContacts").addEventListener("click", loadWorkspace);
 
+$("#signOutButton").addEventListener("click", async () => {
+  sessionStorage.removeItem("smartmailer_api_key");
+  state.apiKey = "";
+  state.workspace = null;
+  state.contacts = [];
+  state.campaigns = [];
+  await loadWorkspace();
+  go("settings");
+  toast("Workspace signed out. Close all browser windows to clear the outer dashboard login.");
+});
+
 $("#composerForm").addEventListener("submit", async event => {
   event.preventDefault();
   if (!state.workspace) { toast("Connect a workspace first.", "error"); go("settings"); return; }
@@ -379,5 +390,8 @@ $("#composerForm").addEventListener("submit", async event => {
 });
 
 renderProviderFields();
+if (!["127.0.0.1", "localhost"].includes(location.hostname)) {
+  $("#developerApiLink").hidden = true;
+}
 go((location.hash || "#overview").slice(1) in viewCopy ? (location.hash || "#overview").slice(1) : "overview");
 loadWorkspace();
