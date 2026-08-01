@@ -347,9 +347,7 @@ $("#signOutButton").addEventListener("click", async () => {
   state.workspace = null;
   state.contacts = [];
   state.campaigns = [];
-  await loadWorkspace();
-  go("settings");
-  toast("Workspace signed out. Close all browser windows to clear the outer dashboard login.");
+  try { await fetch("/auth/logout", { method: "POST" }); } finally { location.href = "/login"; }
 });
 
 $("#composerForm").addEventListener("submit", async event => {

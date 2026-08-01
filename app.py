@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI, Header, UploadFile, File, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import Any, Literal
@@ -26,17 +26,22 @@ from services.campaigns import normalize_contacts, render_campaign
 from services.recipient_name import recipient_variables
 from services.contact_csv import ContactCSVError, parse_contacts_csv
 from services.redis_queue import RedisQueueError, TransactionalQueue, utc_now
+from services.dashboard_auth import create_session, verify_password, verify_session
 
 import shutil
 import os
 import secrets
 import time
+import hmac
+import threading
 
 
 TRANSACTIONAL_QUEUE_BATCH_SIZE = int(os.getenv("TRANSACTIONAL_BATCH_SIZE", "50"))
 TRANSACTIONAL_QUEUE_INTERVAL_SECONDS = int(os.getenv("TRANSACTIONAL_BATCH_INTERVAL_SECONDS", "300"))
 TRANSACTIONAL_QUEUE_MAX_RECIPIENTS = int(os.getenv("TRANSACTIONAL_QUEUE_MAX_RECIPIENTS", "10000"))
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+LOGIN_ATTEMPTS_LOCK = threading.Lock()
 
 
 app = FastAPI(
@@ -47,6 +52,35 @@ app = FastAPI(
 tenant_store = TenantStore()
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def dashboard_session_auth(request: Request, call_next):
+    if not IS_PRODUCTION:
+        return await call_next(request)
+
+    public_path = (
+        request.url.path in {"/login", "/auth/login", "/health", "/favicon.ico"}
+        or request.url.path.startswith("/static/")
+    )
+    if public_path:
+        return await call_next(request)
+
+    # API integrations retain workspace-key authentication without a browser cookie.
+    if request.headers.get("X-API-Key"):
+        return await call_next(request)
+
+    dashboard_user = os.getenv("DASHBOARD_USER", "admin")
+    session_secret = os.getenv("DASHBOARD_SESSION_SECRET", "")
+    session_token = request.cookies.get("smartmailer_session", "")
+    if session_secret and verify_session(session_token, dashboard_user, session_secret):
+        return await call_next(request)
+
+    if request.url.path.startswith("/v1/") or request.url.path in {
+        "/verify", "/upload-csv", "/send-email", "/send-campaign"
+    }:
+        return JSONResponse(status_code=401, content={"detail": "Dashboard login is required."})
+    return RedirectResponse("/login", status_code=303)
 
 
 @app.exception_handler(RequestValidationError)
@@ -132,6 +166,59 @@ def append_workspace_signature(draft: dict, signature_html: str | None) -> dict:
 @app.get("/")
 def home():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+class DashboardLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=1_000)
+
+
+@app.get("/login", include_in_schema=False)
+def dashboard_login_page():
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+
+
+@app.post("/auth/login", include_in_schema=False)
+def dashboard_login(request: DashboardLoginRequest, http_request: Request):
+    client_address = http_request.client.host if http_request.client else "unknown"
+    cutoff = time.time() - 900
+    with LOGIN_ATTEMPTS_LOCK:
+        recent_attempts = [attempt for attempt in LOGIN_ATTEMPTS.get(client_address, []) if attempt > cutoff]
+        LOGIN_ATTEMPTS[client_address] = recent_attempts
+        if len(recent_attempts) >= 5:
+            raise HTTPException(status_code=429, detail="Too many failed sign-in attempts. Try again later.")
+    dashboard_user = os.getenv("DASHBOARD_USER", "admin")
+    password_hash = os.getenv("DASHBOARD_APP_PASSWORD_HASH", "")
+    session_secret = os.getenv("DASHBOARD_SESSION_SECRET", "")
+    credentials_valid = (
+        bool(password_hash and session_secret)
+        and hmac.compare_digest(request.username, dashboard_user)
+        and verify_password(request.password, password_hash)
+    )
+    if not credentials_valid:
+        with LOGIN_ATTEMPTS_LOCK:
+            LOGIN_ATTEMPTS.setdefault(client_address, []).append(time.time())
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    with LOGIN_ATTEMPTS_LOCK:
+        LOGIN_ATTEMPTS.pop(client_address, None)
+    response = JSONResponse({"status": "authenticated"})
+    response.set_cookie(
+        "smartmailer_session",
+        create_session(dashboard_user, session_secret),
+        max_age=int(os.getenv("DASHBOARD_SESSION_TTL_SECONDS", "28800")),
+        httponly=True,
+        secure=IS_PRODUCTION,
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@app.post("/auth/logout", include_in_schema=False)
+def dashboard_logout():
+    response = JSONResponse({"status": "signed_out"})
+    response.delete_cookie("smartmailer_session", path="/", secure=IS_PRODUCTION, samesite="strict")
+    return response
 
 
 @app.get("/health")
