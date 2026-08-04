@@ -23,3 +23,5 @@ requests==2.34.2
 msal==1.37.0
 sendgrid==6.12.5
 cryptography==49.0.0
+pytest==9.1.1
+httpx2==2.9.1

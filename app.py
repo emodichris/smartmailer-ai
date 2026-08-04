@@ -40,6 +40,7 @@ TRANSACTIONAL_QUEUE_BATCH_SIZE = int(os.getenv("TRANSACTIONAL_BATCH_SIZE", "50")
 TRANSACTIONAL_QUEUE_INTERVAL_SECONDS = int(os.getenv("TRANSACTIONAL_BATCH_INTERVAL_SECONDS", "300"))
 TRANSACTIONAL_QUEUE_MAX_RECIPIENTS = int(os.getenv("TRANSACTIONAL_QUEUE_MAX_RECIPIENTS", "10000"))
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
+DASHBOARD_SESSION_MAX_AGE_SECONDS = int(os.getenv("DASHBOARD_SESSION_MAX_AGE_SECONDS", "28800"))
 LOGIN_ATTEMPTS: dict[str, list[float]] = {}
 LOGIN_ATTEMPTS_LOCK = threading.Lock()
 
@@ -60,7 +61,7 @@ async def dashboard_session_auth(request: Request, call_next):
         return await call_next(request)
 
     public_path = (
-        request.url.path in {"/login", "/auth/login", "/health", "/favicon.ico"}
+        request.url.path in {"/login", "/auth/login", "/health", "/favicon.ico", "/service-worker.js"}
         or request.url.path.startswith("/static/")
     )
     if public_path:
@@ -76,7 +77,9 @@ async def dashboard_session_auth(request: Request, call_next):
     dashboard_user = os.getenv("DASHBOARD_USER", "admin")
     session_secret = os.getenv("DASHBOARD_SESSION_SECRET", "")
     session_token = request.cookies.get("smartmailer_session", "")
-    if session_secret and verify_session(session_token, dashboard_user, session_secret):
+    if session_secret and verify_session(
+        session_token, dashboard_user, session_secret, DASHBOARD_SESSION_MAX_AGE_SECONDS
+    ):
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
@@ -211,9 +214,7 @@ def dashboard_login(request: DashboardLoginRequest, http_request: Request):
     response.set_cookie(
         "smartmailer_session",
         create_session(dashboard_user, session_secret),
-        # Authentication has no application-enforced timeout. Browsers may still
-        # enforce their own maximum cookie lifetime.
-        max_age=315_360_000,
+        max_age=DASHBOARD_SESSION_MAX_AGE_SECONDS,
         httponly=True,
         secure=IS_PRODUCTION,
         samesite="strict",
@@ -234,6 +235,17 @@ def dashboard_logout():
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "SmartMailer AI"}
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+def service_worker():
+    response = FileResponse(
+        os.path.join(STATIC_DIR, "service-worker.js"),
+        media_type="application/javascript",
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/favicon.ico", include_in_schema=False)

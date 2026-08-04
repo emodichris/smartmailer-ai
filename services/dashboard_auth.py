@@ -9,6 +9,7 @@ import hmac
 import os
 import secrets
 import sys
+import time
 from pathlib import Path
 
 
@@ -36,23 +37,32 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
-def create_session(username: str, secret: str) -> str:
-    payload = username
+def create_session(username: str, secret: str, issued_at: int | None = None) -> str:
+    payload = f"{username}:{issued_at if issued_at is not None else int(time.time())}"
     signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return base64.urlsafe_b64encode(f"{payload}:{signature}".encode()).decode()
 
 
-def verify_session(token: str, username: str, secret: str) -> bool:
+def verify_session(
+    token: str,
+    username: str,
+    secret: str,
+    max_age_seconds: int = 28_800,
+    now: int | None = None,
+) -> bool:
     try:
         decoded = base64.urlsafe_b64decode(token.encode()).decode()
-        token_username, signature = decoded.rsplit(":", 1)
-        payload = token_username
+        token_username, issued_at_value, signature = decoded.rsplit(":", 2)
+        issued_at = int(issued_at_value)
+        current_time = now if now is not None else int(time.time())
+        payload = f"{token_username}:{issued_at}"
         expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
         return (
             hmac.compare_digest(signature, expected)
             and hmac.compare_digest(token_username, username)
+            and 0 <= current_time - issued_at <= max_age_seconds
         )
-    except (ValueError, UnicodeDecodeError):
+    except (TypeError, ValueError, UnicodeDecodeError):
         return False
 
 
