@@ -14,7 +14,9 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_ROOT = PROJECT_ROOT / "templates" / "transactional"
 SIGNATURE_ROOT = PROJECT_ROOT / "signatures"
-PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+# AI drafts commonly use either {first_name} or {{first_name}}. Treat both as
+# the same placeholder so double-brace templates do not render as {Ada}.
+PLACEHOLDER = re.compile(r"\{\{?([a-zA-Z_][a-zA-Z0-9_]*)\}\}?")
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
