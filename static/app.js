@@ -307,7 +307,8 @@ $("#providerSelect").addEventListener("change", renderProviderFields);
 $("#providerForm").addEventListener("submit", async event => {
   event.preventDefault();
   if (!state.workspace) { toast("Connect a workspace first.", "error"); return; }
-  const form = new FormData(event.currentTarget);
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
   const provider = form.get("provider");
   const credentials = {};
   providerDefinitions[provider].forEach(([name, , type]) => {
@@ -319,7 +320,7 @@ $("#providerForm").addEventListener("submit", async event => {
       method: "PUT",
       body: JSON.stringify({ name: form.get("name").trim(), provider, credentials })
     });
-    event.currentTarget.reset();
+    formElement.reset();
     $("#providerSelect").value = provider;
     renderProviderFields();
     await loadWorkspace();
@@ -329,11 +330,12 @@ $("#providerForm").addEventListener("submit", async event => {
 
 $("#contactForm").addEventListener("submit", async event => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
   const contact = Object.fromEntries([...form.entries()].filter(([, value]) => value.trim()));
   try {
     await api("/v1/contacts", { method: "POST", body: JSON.stringify({ contacts: [contact] }) });
-    event.currentTarget.reset(); await loadWorkspace(); toast("Contact added.");
+    formElement.reset(); await loadWorkspace(); toast("Contact added.");
   } catch (error) { toast(errorMessage(error), "error"); }
 });
 
