@@ -1,4 +1,4 @@
-const CACHE_NAME = "smartmailer-static-v1";
+const CACHE_NAME = "smartmailer-static-v2";
 const STATIC_ASSETS = [
   "/static/styles.css",
   "/static/app.js",
