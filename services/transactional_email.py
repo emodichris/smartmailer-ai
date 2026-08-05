@@ -17,6 +17,7 @@ SIGNATURE_ROOT = PROJECT_ROOT / "signatures"
 # AI drafts commonly use either {first_name} or {{first_name}}. Treat both as
 # the same placeholder so double-brace templates do not render as {Ada}.
 PLACEHOLDER = re.compile(r"\{\{?([a-zA-Z_][a-zA-Z0-9_]*)\}\}?")
+VARIABLE_ALIASES = {"Email": "email"}
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
 
@@ -39,13 +40,19 @@ class _TextExtractor(HTMLParser):
 
 def render_variables(content: str, variables: dict[str, Any]) -> str:
     """Replace {variable} tokens and reject requests with missing values."""
-    missing = sorted({match.group(1) for match in PLACEHOLDER.finditer(content)
-                      if match.group(1) not in variables})
+    missing = sorted({
+        VARIABLE_ALIASES.get(match.group(1), match.group(1))
+        for match in PLACEHOLDER.finditer(content)
+        if VARIABLE_ALIASES.get(match.group(1), match.group(1)) not in variables
+    })
     if missing:
         raise TransactionalEmailError(
             "Missing template variables: " + ", ".join(missing)
         )
-    return PLACEHOLDER.sub(lambda match: str(variables[match.group(1)]), content)
+    return PLACEHOLDER.sub(
+        lambda match: str(variables[VARIABLE_ALIASES.get(match.group(1), match.group(1))]),
+        content,
+    )
 
 
 def read_template(template_name: str, extension: str, required: bool = True) -> str | None:

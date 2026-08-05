@@ -22,7 +22,15 @@ class AIContentPlaceholderTests(unittest.TestCase):
 
     def test_invented_variable_is_rejected(self):
         with self.assertRaisesRegex(AIContentError, "Email"):
-            _normalize_draft_placeholders(draft("Hello {Email}"), ["first_name"])
+            _normalize_draft_placeholders(draft("Hello {UnknownEmail}"), ["first_name"])
+
+    def test_capitalized_email_alias_is_normalized(self):
+        result = _normalize_draft_placeholders(
+            draft("Open https://example.com/?email={{Email}}"), ["email"]
+        )
+        self.assertEqual(
+            result["text_body"], "Open https://example.com/?email={email}"
+        )
 
     def test_subject_variable_is_rejected(self):
         with self.assertRaisesRegex(AIContentError, "subject"):

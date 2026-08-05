@@ -23,6 +23,7 @@ def _normalize_draft_placeholders(draft: dict, allowed_variables: list[str]) -> 
     normalized = dict(draft)
     for field in ("html_body", "text_body"):
         normalized[field] = DOUBLE_PLACEHOLDER.sub(r"{\1}", str(normalized[field]))
+        normalized[field] = normalized[field].replace("{Email}", "{email}")
 
     allowed = set(allowed_variables)
     used = {
