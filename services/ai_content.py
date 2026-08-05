@@ -82,24 +82,38 @@ def _response_text(response: dict) -> str:
     return "".join(parts)
 
 
+def _email_system_prompt(email_type: str) -> str:
+    type_rules = (
+        "This is a transactional message tied to an existing customer transaction. "
+        "Do not add promotions, marketing language, or an unsubscribe placeholder. Preserve specific "
+        "invoice or transaction identifiers supplied by the user and include the supplied call to action. "
+        if email_type == "transactional"
+        else
+        "This is a marketing message. Include an unsubscribe placeholder only when unsubscribe_url is "
+        "present in the supplied variables array; otherwise include clear unsubscribe instructions without "
+        "inventing a template variable. "
+    )
+    return (
+        "You write compliant, deliverability-conscious business email. "
+        "Do not claim guaranteed inbox placement. Do not use deceptive urgency, misleading claims, "
+        "or spammy language. "
+        + type_rules
+        + "Use only variable names present in the supplied variables array. Write every variable with "
+        "exactly one opening and one closing brace, for example {first_name}; never use double braces, "
+        "rename, capitalize, or invent a variable. Do not put variables in subject lines. Preserve any "
+        "literal HTTPS call-to-action URL exactly as supplied. When call_to_action is an HTML anchor, "
+        "include that anchor in html_body and include its label and URL in text_body. Return only valid "
+        "JSON with: subject, subject_variants (array of 3 strings), html_body, text_body."
+    )
+
+
 def generate_email_draft(tenant_id: str, request_data: dict) -> dict:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise AIContentError("OPENAI_API_KEY is not configured for AI drafting.")
 
     email_type = request_data["email_type"]
-    system_prompt = (
-        "You write compliant, deliverability-conscious business email. "
-        "Do not claim guaranteed inbox placement. Do not use deceptive urgency, misleading claims, "
-        "or spammy language. Marketing drafts must include an unsubscribe placeholder. "
-        "Use only variable names present in the supplied variables array. Write every variable with "
-        "exactly one opening and one closing brace, for example {first_name}; never use double braces, "
-        "rename, capitalize, or invent a variable. Do not put variables in subject lines. Preserve any "
-        "literal HTTPS call-to-action URL exactly as supplied. "
-        "When call_to_action is an HTML anchor, include that anchor in html_body and include its "
-        "label and URL in text_body. "
-        "Return only valid JSON with: subject, subject_variants (array of 3 strings), html_body, text_body."
-    )
+    system_prompt = _email_system_prompt(email_type)
     user_prompt = json.dumps(request_data, ensure_ascii=False)
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),

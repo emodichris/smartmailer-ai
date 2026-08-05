@@ -2,6 +2,7 @@ import unittest
 
 from services.ai_content import (
     AIContentError,
+    _email_system_prompt,
     _ensure_html_call_to_action,
     _normalize_draft_placeholders,
 )
@@ -17,6 +18,16 @@ def draft(body: str, subject: str = "Your invoice is ready") -> dict:
 
 
 class AIContentPlaceholderTests(unittest.TestCase):
+    def test_transactional_prompt_excludes_marketing_and_unsubscribe(self):
+        prompt = _email_system_prompt("transactional")
+        self.assertIn("transactional message", prompt)
+        self.assertIn("Do not add promotions", prompt)
+        self.assertIn("Do not add promotions, marketing language, or an unsubscribe placeholder", prompt)
+
+    def test_marketing_prompt_requires_conditional_unsubscribe_handling(self):
+        prompt = _email_system_prompt("marketing")
+        self.assertIn("unsubscribe_url", prompt)
+
     def test_double_braces_are_normalized_to_single_braces(self):
         result = _normalize_draft_placeholders(
             draft("Hello {{first_name}}"), ["first_name"]
