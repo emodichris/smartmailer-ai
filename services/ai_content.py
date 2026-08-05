@@ -5,12 +5,43 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 class AIContentError(RuntimeError):
     pass
+
+
+DOUBLE_PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+SINGLE_PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _normalize_draft_placeholders(draft: dict, allowed_variables: list[str]) -> dict:
+    """Use project-standard braces and reject invented AI template variables."""
+    normalized = dict(draft)
+    for field in ("html_body", "text_body"):
+        normalized[field] = DOUBLE_PLACEHOLDER.sub(r"{\1}", str(normalized[field]))
+
+    allowed = set(allowed_variables)
+    used = {
+        match.group(1)
+        for field in ("html_body", "text_body")
+        for match in SINGLE_PLACEHOLDER.finditer(normalized[field])
+    }
+    unknown = sorted(used - allowed)
+    if unknown:
+        raise AIContentError(
+            "AI provider invented unsupported template variables: " + ", ".join(unknown)
+        )
+
+    subject_text = " ".join(
+        [str(normalized.get("subject", "")), *map(str, normalized.get("subject_variants", []))]
+    )
+    if SINGLE_PLACEHOLDER.search(DOUBLE_PLACEHOLDER.sub(r"{\1}", subject_text)):
+        raise AIContentError("AI provider put a template variable in a subject line. Please retry.")
+    return normalized
 
 
 def _response_text(response: dict) -> str:
@@ -34,6 +65,10 @@ def generate_email_draft(tenant_id: str, request_data: dict) -> dict:
         "You write compliant, deliverability-conscious business email. "
         "Do not claim guaranteed inbox placement. Do not use deceptive urgency, misleading claims, "
         "or spammy language. Marketing drafts must include an unsubscribe placeholder. "
+        "Use only variable names present in the supplied variables array. Write every variable with "
+        "exactly one opening and one closing brace, for example {first_name}; never use double braces, "
+        "rename, capitalize, or invent a variable. Do not put variables in subject lines. Preserve any "
+        "literal HTTPS call-to-action URL exactly as supplied. "
         "Return only valid JSON with: subject, subject_variants (array of 3 strings), html_body, text_body."
     )
     user_prompt = json.dumps(request_data, ensure_ascii=False)
@@ -70,7 +105,9 @@ def generate_email_draft(tenant_id: str, request_data: dict) -> dict:
     required = {"subject", "subject_variants", "html_body", "text_body"}
     if not required.issubset(draft) or not isinstance(draft["subject_variants"], list):
         raise AIContentError("AI provider returned an incomplete draft. Please retry.")
-    return {key: draft[key] for key in required}
+    return _normalize_draft_placeholders(
+        {key: draft[key] for key in required}, request_data.get("variables", [])
+    )
 
 
 def generate_signature_draft(tenant_id: str, request_data: dict) -> dict:
