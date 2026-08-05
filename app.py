@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Header, UploadFile, File, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, UploadFile, File, Form, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import Any, Literal
 
-from email_verifier.verifier import verify_email_list
+from email_verifier.verifier import check_email_format, verify_email_list
 from services.csv_reader import CSVReader
 from services.csv_cleaner import CSVCleaner
 
@@ -403,6 +403,57 @@ class TransactionalQueueRequest(TenantEmailBatchRequest):
         return self
 
 
+def transactional_recipients_from_csv(content: bytes) -> tuple[list[dict], list[dict], int]:
+    """Convert a contact CSV into unique queue recipients without probing mailboxes."""
+    raw_contacts, total_rows = parse_contacts_csv(content)
+    recipients = []
+    invalid_rows = []
+    seen = set()
+    for row_number, contact in enumerate(raw_contacts, start=2):
+        email = str(contact.get("email", "")).strip().lower()
+        if not check_email_format(email):
+            invalid_rows.append({"row": row_number, "reason": "Invalid email format."})
+            continue
+        if email in seen:
+            invalid_rows.append({"row": row_number, "reason": "Duplicate email."})
+            continue
+        seen.add(email)
+        variables = {
+            str(key).strip(): str(value).strip()
+            for key, value in contact.items()
+            if str(key).strip().lower() != "email" and str(value).strip()
+        }
+        # CSVs may carry the standard link template. Resolve it before queueing
+        # so the template renderer does not need unsafe recursive substitution.
+        variables = {
+            key: value.replace("{{Email}}", email).replace("{Email}", email)
+                      .replace("{{email}}", email).replace("{email}", email)
+            for key, value in variables.items()
+        }
+        recipients.append({"to_email": email, "variables": variables, "_source_row": row_number})
+    return recipients, invalid_rows, total_rows
+
+
+def validate_transactional_csv_recipients(
+    recipients: list[dict], invalid_rows: list[dict], template_name: str
+) -> list[dict]:
+    valid = []
+    for recipient in recipients:
+        try:
+            variables = recipient_variables(recipient["to_email"], recipient["variables"])
+            build_message(
+                html_body=None,
+                text_body=None,
+                template_name=template_name,
+                variables=variables,
+                signature_name=None,
+            )
+            valid.append({"to_email": recipient["to_email"], "variables": recipient["variables"]})
+        except TransactionalEmailError as exc:
+            invalid_rows.append({"row": recipient.get("_source_row", "recipient"), "reason": str(exc)})
+    return valid
+
+
 
 
 @app.post("/send-email")
@@ -595,6 +646,95 @@ def queue_tenant_transactional_batch(
         "interval_seconds": TRANSACTIONAL_QUEUE_INTERVAL_SECONDS,
         "notice": "The first batch runs when transactional_worker.py is running. Each following batch waits for the configured interval. Use only for recipients authorized by the relevant contract or transaction.",
     }
+
+
+@app.post("/v1/transactional/preview-csv")
+async def preview_transactional_csv(
+    connection_name: str = Form(...),
+    subject: str = Form(...),
+    template_name: str = Form("invoice"),
+    file: UploadFile = File(...),
+    tenant: dict = Depends(get_current_tenant),
+):
+    """Validate a transactional CSV and render one recipient without queueing email."""
+    try:
+        tenant_store.get_provider_connection(tenant["id"], connection_name)
+        recipients, invalid_rows, total_rows = transactional_recipients_from_csv(await file.read())
+        recipients = validate_transactional_csv_recipients(recipients, invalid_rows, template_name)
+        if not recipients:
+            raise ValueError("No valid transactional recipients were found in the CSV.")
+        if len(recipients) > TRANSACTIONAL_QUEUE_MAX_RECIPIENTS:
+            raise ValueError(
+                f"This sender accepts at most {TRANSACTIONAL_QUEUE_MAX_RECIPIENTS} recipients per queued job."
+            )
+        sample = recipients[0]
+        html_body, text_body = build_message(
+            html_body=None,
+            text_body=None,
+            template_name=template_name,
+            variables=recipient_variables(sample["to_email"], sample["variables"]),
+            signature_name=None,
+        )
+    except ContactCSVError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TenantStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (TransactionalEmailError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    batches = (len(recipients) + TRANSACTIONAL_QUEUE_BATCH_SIZE - 1) // TRANSACTIONAL_QUEUE_BATCH_SIZE
+    return {
+        "rows_read": total_rows,
+        "valid_recipients": len(recipients),
+        "invalid_count": len(invalid_rows),
+        "invalid_rows": invalid_rows[:100],
+        "batch_size": TRANSACTIONAL_QUEUE_BATCH_SIZE,
+        "estimated_batches": batches,
+        "estimated_duration_seconds": max(0, batches - 1) * TRANSACTIONAL_QUEUE_INTERVAL_SECONDS,
+        "sample": {
+            "to_email": sample["to_email"],
+            "subject": subject.strip(),
+            "html_body": html_body,
+            "text_body": text_body,
+        },
+        "notice": "Preview only. No email was queued or sent.",
+    }
+
+
+@app.post("/v1/transactional/queue-csv", status_code=status.HTTP_202_ACCEPTED)
+async def queue_transactional_csv(
+    connection_name: str = Form(...),
+    subject: str = Form(...),
+    template_name: str = Form("invoice"),
+    confirm_transactional: str = Form(...),
+    file: UploadFile = File(...),
+    tenant: dict = Depends(get_current_tenant),
+):
+    """Queue a reviewed transactional CSV through the dashboard workflow."""
+    if confirm_transactional.strip().lower() != "true":
+        raise HTTPException(
+            status_code=400,
+            detail="Explicit transactional-send confirmation is required.",
+        )
+    try:
+        recipients, invalid_rows, _ = transactional_recipients_from_csv(await file.read())
+        recipients = validate_transactional_csv_recipients(recipients, invalid_rows, template_name)
+        if not recipients:
+            raise ValueError("No valid transactional recipients were found in the CSV.")
+        request = TransactionalQueueRequest(
+            connection_name=connection_name,
+            recipients=recipients,
+            subject=subject.strip(),
+            template_name=template_name,
+            confirm_transactional=True,
+        )
+    except ContactCSVError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (TransactionalEmailError, ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    result = queue_tenant_transactional_batch(request, tenant)
+    result["invalid_rows_skipped"] = len(invalid_rows)
+    return result
 
 
 @app.get("/v1/transactional/queue/{job_id}")

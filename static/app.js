@@ -3,6 +3,7 @@ const state = {
   workspace: null,
   contacts: [],
   campaigns: [],
+  transactionalPreviewFile: null,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -77,6 +78,7 @@ const viewCopy = {
   compose: ["Create", "Compose with AI."],
   contacts: ["Audience", "People you can reach."],
   campaigns: ["Outbox", "Review before sending."],
+  transactional: ["Operations", "Queue transactional email."],
   settings: ["Configuration", "Make it yours."],
 };
 
@@ -131,9 +133,11 @@ function renderContacts() {
 function renderConnections() {
   const connections = state.workspace?.provider_connections || [];
   $("#connectionMetric").textContent = state.workspace ? connections.length : "—";
-  $("#composerConnection").innerHTML = connections.length
+  const options = connections.length
     ? connections.map(item => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)} · ${escapeHtml(item.provider)}</option>`).join("")
     : '<option value="">Set up a provider first</option>';
+  $("#composerConnection").innerHTML = options;
+  $("#transactionConnection").innerHTML = options;
 }
 
 function renderCampaigns() {
@@ -352,6 +356,104 @@ $("#csvInput").addEventListener("change", async event => {
   event.target.value = "";
 });
 $("#refreshContacts").addEventListener("click", loadWorkspace);
+
+function transactionalDuration(seconds) {
+  if (!seconds) return "Starts as soon as the worker is available";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.ceil((seconds % 3600) / 60);
+  return `${hours ? `${hours}h ` : ""}${minutes}m estimated queue interval`;
+}
+
+function updateTransactionalQueueButton() {
+  $("#queueTransactionalCsv").disabled = !(
+    state.transactionalPreviewFile && $("#confirmTransactional").checked
+  );
+}
+
+$("#transactionalCsvInput").addEventListener("change", () => {
+  state.transactionalPreviewFile = null;
+  $("#confirmTransactional").checked = false;
+  updateTransactionalQueueButton();
+  $("#transactionalBatchResult").className = "empty-state";
+  $("#transactionalBatchResult").innerHTML = "<p>Validate the selected CSV before queueing.</p>";
+});
+
+$("#confirmTransactional").addEventListener("change", updateTransactionalQueueButton);
+
+$("#previewTransactionalCsv").addEventListener("click", async () => {
+  if (!state.workspace) { toast("Connect a workspace first.", "error"); go("settings"); return; }
+  const formElement = $("#transactionalBatchForm");
+  const file = $("#transactionalCsvInput").files[0];
+  if (!file) { toast("Choose a transactional CSV first.", "error"); return; }
+  const button = $("#previewTransactionalCsv");
+  button.disabled = true; button.textContent = "Validating…";
+  try {
+    const result = await api("/v1/transactional/preview-csv", {
+      method: "POST", body: new FormData(formElement)
+    });
+    state.transactionalPreviewFile = file;
+    const sample = result.sample;
+    $("#transactionalBatchResult").className = "";
+    $("#transactionalBatchResult").innerHTML = `
+      <div class="score-line"><span>Valid recipients</span><strong>${result.valid_recipients}</strong></div>
+      <div class="score-line"><span>Rejected or duplicate rows</span><strong>${result.invalid_count}</strong></div>
+      <div class="score-line"><span>Schedule</span><strong>${result.estimated_batches} batches · ${result.batch_size} each</strong></div>
+      <p>${escapeHtml(transactionalDuration(result.estimated_duration_seconds))}</p>
+      <div class="email-paper">
+        <div class="email-meta"><small>Preview recipient</small><strong>${escapeHtml(sample.to_email)}</strong><small>${escapeHtml(sample.subject)}</small></div>
+        <div class="email-body">${safeEmailHtml(sample.html_body)}</div>
+      </div>
+      <p>${escapeHtml(result.notice)}</p>`;
+    updateTransactionalQueueButton();
+    toast("CSV validated. Review the preview before confirming.");
+  } catch (error) {
+    state.transactionalPreviewFile = null;
+    updateTransactionalQueueButton();
+    toast(errorMessage(error), "error");
+  } finally {
+    button.disabled = false; button.textContent = "Validate and preview";
+  }
+});
+
+async function pollTransactionalJob(jobId) {
+  try {
+    const job = await api(`/v1/transactional/queue/${jobId}`);
+    const percent = job.recipients ? Math.round(job.processed / job.recipients * 100) : 0;
+    $("#transactionalBatchResult").innerHTML = `
+      <p class="eyebrow">Queue job · ${escapeHtml(job.job_id)}</p>
+      <h2>${escapeHtml(job.status)}</h2>
+      <progress value="${job.processed}" max="${job.recipients}"></progress>
+      <div class="score-line"><span>Processed</span><strong>${job.processed}/${job.recipients} · ${percent}%</strong></div>
+      <div class="score-line"><span>Accepted</span><strong>${job.accepted}</strong></div>
+      <div class="score-line"><span>Skipped / failed</span><strong>${job.skipped} / ${job.failed}</strong></div>
+      ${job.last_error ? `<p class="error-text">${escapeHtml(job.last_error)}</p>` : ""}`;
+    if (["queued", "processing"].includes(job.status)) setTimeout(() => pollTransactionalJob(jobId), 5000);
+  } catch (error) { toast(errorMessage(error), "error"); }
+}
+
+$("#transactionalBatchForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const file = $("#transactionalCsvInput").files[0];
+  if (!file || file !== state.transactionalPreviewFile) {
+    toast("Validate this exact CSV before queueing it.", "error"); return;
+  }
+  if (!$("#confirmTransactional").checked) {
+    toast("Confirm recipient authorization before queueing.", "error"); return;
+  }
+  const button = $("#queueTransactionalCsv");
+  const body = new FormData(event.currentTarget);
+  body.append("confirm_transactional", "true");
+  button.disabled = true; button.textContent = "Queueing…";
+  try {
+    const result = await api("/v1/transactional/queue-csv", { method: "POST", body });
+    state.transactionalPreviewFile = null;
+    toast(`Queued ${result.recipients} transactional recipients.`);
+    await pollTransactionalJob(result.job_id);
+  } catch (error) {
+    toast(errorMessage(error), "error");
+    updateTransactionalQueueButton();
+  } finally { button.textContent = "Queue transactional batch"; }
+});
 
 $("#signOutButton").addEventListener("click", async () => {
   sessionStorage.removeItem("smartmailer_api_key");

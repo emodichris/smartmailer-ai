@@ -23,6 +23,7 @@
         <button class="nav-item" data-view="compose"><span>✦</span>AI Composer</button>
         <button class="nav-item" data-view="contacts"><span>♙</span>Contacts</button>
         <button class="nav-item" data-view="campaigns"><span>➤</span>Campaigns</button>
+        <button class="nav-item" data-view="transactional"><span>↻</span>Transactional</button>
         <button class="nav-item" data-view="settings"><span>⚙</span>Settings</button>
       </nav>
 
@@ -186,6 +187,38 @@
           </div>
           <div id="campaignList" class="list-container empty-state"><p>No campaigns yet.</p></div>
         </article>
+      </section>
+
+      <section class="view" id="view-transactional">
+        <div class="section-intro">
+          <div><p class="eyebrow">Operations</p><h2>Transactional batch sender</h2></div>
+          <p>Upload, validate, preview, and explicitly queue authorized transactional recipients.</p>
+        </div>
+        <div class="compose-grid">
+          <form id="transactionalBatchForm" class="panel form-panel">
+            <label>Sending connection<select name="connection_name" id="transactionConnection" required><option value="">Set up a provider first</option></select></label>
+            <label>Subject<input name="subject" required maxlength="200" value="Your invoice is available"></label>
+            <label>Template<select name="template_name"><option value="invoice">Invoice</option></select></label>
+            <label class="upload-box">Choose transactional CSV
+              <small>Requires email, first_name, invoice_number, and invoice_url · UTF-8 · max 5 MB</small>
+              <input id="transactionalCsvInput" name="file" type="file" accept=".csv,text/csv" required>
+            </label>
+            <button id="previewTransactionalCsv" class="button secondary full" type="button">Validate and preview</button>
+            <label class="transaction-confirmation">
+              <input id="confirmTransactional" type="checkbox">
+              <span>I confirm every recipient is authorized by the relevant transaction or contract.</span>
+            </label>
+            <button id="queueTransactionalCsv" class="button primary full" type="submit" disabled>Queue transactional batch</button>
+          </form>
+          <article class="panel preview-panel transactional-result-panel">
+            <div class="preview-top"><span>Batch review</span><span class="draft-badge">Nothing sent</span></div>
+            <div id="transactionalBatchResult" class="empty-state">
+              <div class="spark">↻</div>
+              <strong>Validate your CSV before queueing</strong>
+              <p>The preview renders one recipient and reports rejected rows.</p>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="view" id="view-settings">

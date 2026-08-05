@@ -195,7 +195,7 @@ dialog p { color: var(--muted); }
   .app-shell { display: block; }
   .sidebar { position: static; height: auto; padding: 16px; }
   .brand { padding-bottom: 15px; }
-  .nav { grid-template-columns: repeat(5, 1fr); overflow-x: auto; }
+  .nav { grid-template-columns: repeat(6, 1fr); overflow-x: auto; }
   .nav-item { justify-content: center; padding: 9px; font-size: 0; }
   .nav-item span { font-size: 18px; }
   .sidebar-foot {
@@ -220,6 +220,18 @@ dialog p { color: var(--muted); }
   .list-row { grid-template-columns: 1fr auto; }
   .list-row > :nth-child(2) { display: none; }
 }
+
+.transaction-confirmation {
+  margin: 16px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 600;
+}
+.transaction-confirmation input { width: auto; margin: 3px 0 0; }
+.transactional-result-panel { min-height: 520px; }
+.transactional-result-panel progress { width: 100%; height: 12px; accent-color: var(--green); }
+.error-text { color: var(--danger); }
 
 /* Modern digital interface */
 :root {

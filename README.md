@@ -213,6 +213,14 @@ same transaction or contract. Check progress with
 `GET /v1/transactional/queue/{job_id}`. Provider acceptance is not a guarantee
 that a message reached the inbox.
 
+The dashboard's **Transactional** view provides the same guarded workflow without
+manual API calls. Upload a UTF-8 CSV with `email`, `first_name`, `invoice_number`,
+and `invoice_url`, validate and preview one rendered recipient, confirm that every
+recipient is authorized by the relevant transaction or contract, and then queue
+the reviewed file. The dashboard reports queue progress without displaying the
+remaining recipient list. A CSV may use `{Email}` inside `invoice_url`; the server
+resolves it to that row's normalized email before queueing.
+
 ## Production note
 
 The included SQLite store is appropriate for local development only. A public

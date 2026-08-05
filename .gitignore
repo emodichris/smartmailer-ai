@@ -5,3 +5,4 @@ __pycache__/
 cleaned_emails.csv
 temp_*
 *.sqlite3
+exports/
