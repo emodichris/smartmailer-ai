@@ -1,6 +1,10 @@
 import unittest
 
-from services.ai_content import AIContentError, _normalize_draft_placeholders
+from services.ai_content import (
+    AIContentError,
+    _ensure_html_call_to_action,
+    _normalize_draft_placeholders,
+)
 
 
 def draft(body: str, subject: str = "Your invoice is ready") -> dict:
@@ -36,6 +40,26 @@ class AIContentPlaceholderTests(unittest.TestCase):
         with self.assertRaisesRegex(AIContentError, "subject"):
             _normalize_draft_placeholders(
                 draft("Hello {first_name}", "Invoice for {first_name}"), ["first_name"]
+            )
+
+    def test_html_cta_is_added_to_html_and_text_bodies(self):
+        result = _ensure_html_call_to_action(
+            draft("Hello {first_name}"),
+            '<a href="https://example.com/?email={Email}">View your invoice</a>',
+        )
+        self.assertIn(
+            '<a href="https://example.com/?email={Email}">View your invoice</a>',
+            result["html_body"],
+        )
+        self.assertIn(
+            "View your invoice: https://example.com/?email={Email}",
+            result["text_body"],
+        )
+
+    def test_insecure_html_cta_is_rejected(self):
+        with self.assertRaisesRegex(AIContentError, "HTTPS"):
+            _ensure_html_call_to_action(
+                draft("Hello"), '<a href="http://example.com">View invoice</a>'
             )
 
 

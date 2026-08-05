@@ -16,6 +16,10 @@ class AIContentError(RuntimeError):
 
 DOUBLE_PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 SINGLE_PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+HTML_CTA = re.compile(
+    r'^\s*<a\s+href=(["\'])(https://[^"\'<>\s]+)\1\s*>([^<>]+)</a>\s*$',
+    re.IGNORECASE,
+)
 
 
 def _normalize_draft_placeholders(draft: dict, allowed_variables: list[str]) -> dict:
@@ -45,6 +49,28 @@ def _normalize_draft_placeholders(draft: dict, allowed_variables: list[str]) -> 
     return normalized
 
 
+def _ensure_html_call_to_action(draft: dict, call_to_action: str) -> dict:
+    """Append a validated HTTPS anchor when the model omits an explicit HTML CTA."""
+    match = HTML_CTA.fullmatch(call_to_action)
+    if not match:
+        if call_to_action.lstrip().lower().startswith("<a"):
+            raise AIContentError(
+                'HTML call to action must be one HTTPS anchor, for example '
+                '<a href="https://example.com">View invoice</a>.'
+            )
+        return draft
+
+    href, label = match.group(2), match.group(3).strip()
+    normalized = dict(draft)
+    html_body = str(normalized["html_body"])
+    text_body = str(normalized["text_body"])
+    if href not in html_body:
+        normalized["html_body"] = f'{html_body}\n<p><a href="{href}">{label}</a></p>'
+    if href not in text_body:
+        normalized["text_body"] = f"{text_body}\n\n{label}: {href}"
+    return normalized
+
+
 def _response_text(response: dict) -> str:
     if response.get("output_text"):
         return response["output_text"]
@@ -70,6 +96,8 @@ def generate_email_draft(tenant_id: str, request_data: dict) -> dict:
         "exactly one opening and one closing brace, for example {first_name}; never use double braces, "
         "rename, capitalize, or invent a variable. Do not put variables in subject lines. Preserve any "
         "literal HTTPS call-to-action URL exactly as supplied. "
+        "When call_to_action is an HTML anchor, include that anchor in html_body and include its "
+        "label and URL in text_body. "
         "Return only valid JSON with: subject, subject_variants (array of 3 strings), html_body, text_body."
     )
     user_prompt = json.dumps(request_data, ensure_ascii=False)
@@ -106,9 +134,13 @@ def generate_email_draft(tenant_id: str, request_data: dict) -> dict:
     required = {"subject", "subject_variants", "html_body", "text_body"}
     if not required.issubset(draft) or not isinstance(draft["subject_variants"], list):
         raise AIContentError("AI provider returned an incomplete draft. Please retry.")
-    return _normalize_draft_placeholders(
-        {key: draft[key] for key in required}, request_data.get("variables", [])
+    draft = _ensure_html_call_to_action(
+        {key: draft[key] for key in required}, request_data.get("call_to_action", "")
     )
+    allowed_variables = list(request_data.get("variables", []))
+    if re.search(r"\{\{?(?:Email|email)\}\}?", request_data.get("call_to_action", "")):
+        allowed_variables.append("email")
+    return _normalize_draft_placeholders(draft, allowed_variables)
 
 
 def generate_signature_draft(tenant_id: str, request_data: dict) -> dict:
