@@ -5,8 +5,9 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import Any, Literal
+from concurrent.futures import ThreadPoolExecutor
 
-from email_verifier.verifier import check_email_format, verify_email_list
+from email_verifier.verifier import check_email_format, check_receiving_domain_status, verify_email_list
 from services.csv_reader import CSVReader
 from services.csv_cleaner import CSVCleaner
 
@@ -403,21 +404,41 @@ class TransactionalQueueRequest(TenantEmailBatchRequest):
         return self
 
 
-def transactional_recipients_from_csv(content: bytes) -> tuple[list[dict], list[dict], int]:
-    """Convert a contact CSV into unique queue recipients without probing mailboxes."""
+def transactional_recipients_from_csv(
+    content: bytes, verify_domains: bool = False
+) -> tuple[list[dict], list[dict], int]:
+    """Normalize, deduplicate, and optionally verify recipient MX domains."""
     raw_contacts, total_rows = parse_contacts_csv(content)
     recipients = []
     invalid_rows = []
     seen = set()
+    unique_contacts = []
     for row_number, contact in enumerate(raw_contacts, start=2):
         email = str(contact.get("email", "")).strip().lower()
         if not check_email_format(email):
-            invalid_rows.append({"row": row_number, "reason": "Invalid email format."})
+            invalid_rows.append({"row": row_number, "category": "invalid_format", "reason": "Invalid email format."})
             continue
         if email in seen:
-            invalid_rows.append({"row": row_number, "reason": "Duplicate email."})
+            invalid_rows.append({"row": row_number, "category": "duplicate", "reason": "Duplicate email."})
             continue
         seen.add(email)
+        unique_contacts.append((row_number, email, contact))
+
+    domain_statuses = {}
+    if verify_domains:
+        domains = sorted({email.rsplit("@", 1)[1] for _, email, _ in unique_contacts})
+        with ThreadPoolExecutor(max_workers=min(20, max(1, len(domains)))) as executor:
+            domain_statuses = dict(zip(domains, executor.map(check_receiving_domain_status, domains)))
+
+    for row_number, email, contact in unique_contacts:
+        if verify_domains:
+            domain_status = domain_statuses[email.rsplit("@", 1)[1]]
+            if domain_status != "valid":
+                category = "invalid_domain" if domain_status == "invalid" else "domain_unavailable"
+                reason = ("Receiving domain has no valid MX mail server." if domain_status == "invalid"
+                          else "Receiving domain could not be verified; retry validation later.")
+                invalid_rows.append({"row": row_number, "category": category, "reason": reason})
+                continue
         variables = {
             str(key).strip(): str(value).strip()
             for key, value in contact.items()
@@ -450,8 +471,17 @@ def validate_transactional_csv_recipients(
             )
             valid.append({"to_email": recipient["to_email"], "variables": recipient["variables"]})
         except TransactionalEmailError as exc:
-            invalid_rows.append({"row": recipient.get("_source_row", "recipient"), "reason": str(exc)})
+            invalid_rows.append({"row": recipient.get("_source_row", "recipient"), "category": "template_data", "reason": str(exc)})
     return valid
+
+
+def transactional_cleaning_summary(invalid_rows: list[dict]) -> dict[str, int]:
+    categories = {"duplicate": 0, "invalid_format": 0, "invalid_domain": 0,
+                  "domain_unavailable": 0, "template_data": 0}
+    for item in invalid_rows:
+        category = item.get("category", "template_data")
+        categories[category] = categories.get(category, 0) + 1
+    return categories
 
 
 
@@ -653,13 +683,16 @@ async def preview_transactional_csv(
     connection_name: str = Form(...),
     subject: str = Form(...),
     template_name: str = Form("invoice"),
+    verify_domains: str = Form("true"),
     file: UploadFile = File(...),
     tenant: dict = Depends(get_current_tenant),
 ):
     """Validate a transactional CSV and render one recipient without queueing email."""
     try:
         tenant_store.get_provider_connection(tenant["id"], connection_name)
-        recipients, invalid_rows, total_rows = transactional_recipients_from_csv(await file.read())
+        recipients, invalid_rows, total_rows = transactional_recipients_from_csv(
+            await file.read(), verify_domains=verify_domains.strip().lower() == "true"
+        )
         recipients = validate_transactional_csv_recipients(recipients, invalid_rows, template_name)
         if not recipients:
             raise ValueError("No valid transactional recipients were found in the CSV.")
@@ -688,6 +721,8 @@ async def preview_transactional_csv(
         "valid_recipients": len(recipients),
         "invalid_count": len(invalid_rows),
         "invalid_rows": invalid_rows[:100],
+        "cleaning_summary": transactional_cleaning_summary(invalid_rows),
+        "domain_verification": verify_domains.strip().lower() == "true",
         "batch_size": TRANSACTIONAL_QUEUE_BATCH_SIZE,
         "estimated_batches": batches,
         "estimated_duration_seconds": max(0, batches - 1) * TRANSACTIONAL_QUEUE_INTERVAL_SECONDS,
@@ -707,6 +742,7 @@ async def queue_transactional_csv(
     subject: str = Form(...),
     template_name: str = Form("invoice"),
     confirm_transactional: str = Form(...),
+    verify_domains: str = Form("true"),
     file: UploadFile = File(...),
     tenant: dict = Depends(get_current_tenant),
 ):
@@ -717,7 +753,9 @@ async def queue_transactional_csv(
             detail="Explicit transactional-send confirmation is required.",
         )
     try:
-        recipients, invalid_rows, _ = transactional_recipients_from_csv(await file.read())
+        recipients, invalid_rows, _ = transactional_recipients_from_csv(
+            await file.read(), verify_domains=verify_domains.strip().lower() == "true"
+        )
         recipients = validate_transactional_csv_recipients(recipients, invalid_rows, template_name)
         if not recipients:
             raise ValueError("No valid transactional recipients were found in the CSV.")

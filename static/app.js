@@ -378,6 +378,13 @@ $("#transactionalCsvInput").addEventListener("change", () => {
   $("#transactionalBatchResult").innerHTML = "<p>Validate the selected CSV before queueing.</p>";
 });
 
+$("#verifyTransactionalDomains").addEventListener("change", () => {
+  state.transactionalPreviewFile = null;
+  $("#confirmTransactional").checked = false;
+  updateTransactionalQueueButton();
+  $("#transactionalBatchResult").innerHTML = "<p>Validate the CSV again after changing domain verification.</p>";
+});
+
 $("#confirmTransactional").addEventListener("change", updateTransactionalQueueButton);
 
 $("#previewTransactionalCsv").addEventListener("click", async () => {
@@ -388,15 +395,23 @@ $("#previewTransactionalCsv").addEventListener("click", async () => {
   const button = $("#previewTransactionalCsv");
   button.disabled = true; button.textContent = "Validating…";
   try {
+    const previewBody = new FormData(formElement);
+    previewBody.set("verify_domains", String($("#verifyTransactionalDomains").checked));
     const result = await api("/v1/transactional/preview-csv", {
-      method: "POST", body: new FormData(formElement)
+      method: "POST", body: previewBody
     });
     state.transactionalPreviewFile = file;
     const sample = result.sample;
+    const clean = result.cleaning_summary;
     $("#transactionalBatchResult").className = "";
     $("#transactionalBatchResult").innerHTML = `
       <div class="score-line"><span>Valid recipients</span><strong>${result.valid_recipients}</strong></div>
       <div class="score-line"><span>Rejected or duplicate rows</span><strong>${result.invalid_count}</strong></div>
+      <div class="score-line"><span>Duplicates removed</span><strong>${clean.duplicate}</strong></div>
+      <div class="score-line"><span>Bad email format</span><strong>${clean.invalid_format}</strong></div>
+      <div class="score-line"><span>Invalid receiving domain</span><strong>${clean.invalid_domain}</strong></div>
+      <div class="score-line"><span>Domain check unavailable</span><strong>${clean.domain_unavailable}</strong></div>
+      <div class="score-line"><span>Missing template data</span><strong>${clean.template_data}</strong></div>
       <div class="score-line"><span>Schedule</span><strong>${result.estimated_batches} batches · ${result.batch_size} each</strong></div>
       <p>${escapeHtml(transactionalDuration(result.estimated_duration_seconds))}</p>
       <div class="email-paper">
@@ -443,6 +458,7 @@ $("#transactionalBatchForm").addEventListener("submit", async event => {
   const button = $("#queueTransactionalCsv");
   const body = new FormData(event.currentTarget);
   body.append("confirm_transactional", "true");
+  body.set("verify_domains", String($("#verifyTransactionalDomains").checked));
   button.disabled = true; button.textContent = "Queueing…";
   try {
     const result = await api("/v1/transactional/queue-csv", { method: "POST", body });

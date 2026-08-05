@@ -221,6 +221,11 @@ the reviewed file. The dashboard reports queue progress without displaying the
 remaining recipient list. A CSV may use `{Email}` inside `invoice_url`; the server
 resolves it to that row's normalized email before queueing.
 
+Receiving-domain verification is enabled by default. CSV validation checks email
+syntax, removes case-insensitive duplicates, checks unique domains for MX mail
+servers, and reports temporary DNS lookup failures separately. Mailbox existence
+cannot be guaranteed without sending because most receiving servers block probes.
+
 ## Production note
 
 The included SQLite store is appropriate for local development only. A public

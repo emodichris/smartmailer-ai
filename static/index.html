@@ -203,6 +203,10 @@
               <small>Requires email, first_name, invoice_number, and invoice_url · UTF-8 · max 5 MB</small>
               <input id="transactionalCsvInput" name="file" type="file" accept=".csv,text/csv" required>
             </label>
+            <label class="transaction-confirmation">
+              <input id="verifyTransactionalDomains" type="checkbox" checked>
+              <span>Verify that each receiving domain has an MX mail server.</span>
+            </label>
             <button id="previewTransactionalCsv" class="button secondary full" type="button">Validate and preview</button>
             <label class="transaction-confirmation">
               <input id="confirmTransactional" type="checkbox">
